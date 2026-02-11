@@ -1,38 +1,33 @@
-import json
 import os
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-with open("statements.json", "r", encoding="utf-8") as f:
-    STATEMENTS = json.load(f)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")  # https://your-app.onrender.com
 
-TOKEN = os.getenv("BOT_TOKEN")
+app = Flask(__name__)
+
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Official Political Reference Bot.\nAsk a question."
+    await update.message.reply_text("Bot is running via Webhook!")
+
+application.add_handler(CommandHandler("start", start))
+
+@app.route("/")
+def home():
+    return "Bot is live"
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
+    return "ok"
+
+if __name__ == "__main__":
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
     )
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text.lower()
-
-    for s in STATEMENTS:
-        if any(tag in query for tag in s["tags"]):
-            await update.message.reply_text(
-                f"{s['answer']}\n\n— {s['date']}"
-            )
-            return
-
-    await update.message.reply_text("No official position recorded on that.")
-
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-app.run_polling()
